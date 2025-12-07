@@ -1,12 +1,33 @@
-import { _decorator, Component, Input, input, EventKeyboard, Node } from 'cc';
+import { _decorator, Component, Input, input, EventKeyboard, Node, KeyCode, Collider } from 'cc';
 const { ccclass, property } = _decorator;
 
 @ccclass('Player')
 export class Player extends Component {
 
+    // 绑定玩家节点
+    @property(Node)
+    playerNode: Node | null = null;
+
+    // 绑定相机节点
+    @property(Node)
+    cameraNode: Node | null = null;
+
     // 设置小车的速度是30
     @property // 装饰器 用于在编辑器中显示该属性
-    speed:number = 30;
+    moveUpSpeed:number = 30;
+
+    // 设置小车的左右移动速度是30
+    @property
+    moveLrSpeed:number = 30;
+
+    lrMove = {a:false, b:false}; // 左右移动的变量
+
+
+    // 监听碰撞触发：组件.on（'触发类型',肒行函数,this)
+    // 监听碰撞触发类型：onTriggerEnter 开始触发
+    // 监听碰撞触发类型：onTriggerStay 持续触发
+    // 监听碰撞触发类型：onTriggerExit 结束触发
+    playerCollider: Collider | null = null;  // 玩家碰撞组件
 
         // 监听类型如下：
     // 鼠标事件 Input.EventType.MOUSE_DOWN
@@ -23,17 +44,52 @@ export class Player extends Component {
     // 监听写法如下：input.on(Input.EventType.MOUSE_DOWN, this.onMouseDown, this);
     // 监听开启和关闭成对写上，防止内存泄漏
     protected onLoad(): void {
+        this.playerCollider = this.playerNode!.getComponent(Collider)!;
         input.on(Input.EventType.KEY_DOWN, this.onKeyDown, this);
+        input.on(Input.EventType.KEY_UP, this.onKeyUp, this);
+        this.playerCollider.on('onTriggerEnter', this.onTriggerEnter, this);
     }
 
     protected onDestroy(): void {
         input.off(Input.EventType.KEY_DOWN, this.onKeyDown, this);
+        input.off(Input.EventType.KEY_UP, this.onKeyUp, this);
+        this.playerCollider!.off('onTriggerEnter', this.onTriggerEnter, this);
+    }
+
+    onTriggerEnter() {
+        console.log("碰撞触发");
+
     }
 
     onKeyDown(event: EventKeyboard) {
         console.log("按下的键位：", event.keyCode);
+        if (event.keyCode === KeyCode.KEY_A) {
+            console.log("按下了A键");
+            if (!this.lrMove.a) {
+                this.lrMove.a = true;
+            }
+        } else if (event.keyCode === KeyCode.KEY_D) {
+            console.log("按下了D键");
+            if (!this.lrMove.b) {
+                this.lrMove.b = true;
+            }
+        }
     }
 
+    onKeyUp(event: EventKeyboard) {
+        console.log("释放的键位：", event.keyCode);
+        if (event.keyCode === KeyCode.KEY_A) {
+            console.log("释放了A键");
+            if (this.lrMove.a) {
+                this.lrMove.a = false;
+            }
+        } else if (event.keyCode === KeyCode.KEY_D) {
+            console.log("释放了D键");
+            if (this.lrMove.b) {
+                this.lrMove.b = false;
+            }
+        }   
+    }
 
     start() {
 
@@ -49,11 +105,31 @@ export class Player extends Component {
      */
     update(deltaTime: number) {
         const position = this.node.getPosition();
+        const cameraPosition = this.cameraNode!.getPosition();
+
+        const deltaPos = this.moveUpSpeed * deltaTime;
+        // 让相机跟随小车移动
+        this.cameraNode!.setPosition(cameraPosition.x, cameraPosition.y, cameraPosition.z - deltaPos);
+    
+    
+        // 根据按键状态进行左右移动
+        let x = position.x;
+        if (this.lrMove.a && !this.lrMove.b) {
+            // 按下A键，向左移动
+            x -= this.moveLrSpeed * deltaTime;
+        }
+        if (this.lrMove.b && !this.lrMove.a) {
+            // 按下D键，向右移动
+            x += this.moveLrSpeed * deltaTime;
+        }
+
+        x = Math.max(Math.min(x, 3), -3); // 限制x轴移动范围在-7到7之间
+
         // console.log("当前节点位置：", position);
         // 设置固定的速度移动，进行帧时间补偿 可以解决帧率波动的问题
-        const z = position.z - this.speed * deltaTime;
         // 由于设备帧率忽高忽低，会造成速度不对等， 为了防止这种情况，还需要进行帧时间补偿
-        this.node.setPosition(position.x, position.y, z);
+        const z = position.z - deltaPos
+        this.node.setPosition(x, position.y, z);
     }
 
 
