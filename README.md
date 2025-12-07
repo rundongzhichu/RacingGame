@@ -1,1 +1,2 @@
 # RacingGame
+这是一个用cocos编写的赛车项目
