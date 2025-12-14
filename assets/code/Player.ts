@@ -1,8 +1,19 @@
-import { _decorator, Component, Input, input, EventKeyboard, Node, KeyCode, Collider } from 'cc';
+import { _decorator, Component, Input, input, EventKeyboard, Node, KeyCode, Collider, Label, director } from 'cc';
 const { ccclass, property } = _decorator;
 
 @ccclass('Player')
 export class Player extends Component {
+
+    // 控制2d/3d节点显示，隐藏，销毁
+    // 销毁节点：this.node.destroy();
+    // 设置节点显示：this.node.active = true;
+    // 设置节点隐藏：this.node.active = false;
+    @property(Node)
+    tipsNOde: Node | null = null;
+
+    // 修改提示文本内容
+    @property(Label)
+    tipsLabel: Label | null = null;
 
     // 绑定玩家节点
     @property(Node)
@@ -64,10 +75,11 @@ export class Player extends Component {
         console.log("碰撞到的物体是：", colliderInfo);
         this.moveForward = false; // 碰撞后停止前进
         if(colliderInfo.otherCollider.node.name === "End") {
-            console.log("成功");
+            this.tipsLabel!.string = "挑战成功！";
         } else {
-            console.log("失败");
+            this.tipsLabel!.string = "挑战失败！";
         }
+        this.tipsNOde!.active = true; // 碰撞到其他物体，显示提示节点
     }
 
 
@@ -150,6 +162,32 @@ export class Player extends Component {
         this.node.setPosition(x, position.y, z);
     }
 
+
+    /**
+     * 重新开始游戏
+     * @param button 按钮的相关信息
+     * @param e 按钮的参数
+     */
+    protected newGame(button, e) { 
+        console.log(e);
+        // 方式一：重新加载场景
+        // // 重置小车位置
+        // this.node.setPosition(0, 0, 0);
+        // // 重置相机位置
+        // this.cameraNode!.setPosition(0, 10, 15);
+        // // 隐藏提示节点
+        // this.tipsNOde!.active = false;
+        // // 重置提示文本
+        // this.tipsLabel!.string = "加油！冲刺吧！";
+        // // 重置前进开关
+        // this.moveForward = true;
+
+        // 方式二： 重新加载场景
+        // 重新加载场景会重新走一遍onLoad， start等生命周期函数
+        // 优点：代码简洁，适合小游戏，缺点：场景复杂时，重新加载场景会有卡顿感
+        director.loadScene("RaceRoad");
+
+    }
 
 
 }
