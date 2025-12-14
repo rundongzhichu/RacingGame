@@ -1,4 +1,4 @@
-import { _decorator, Component, Input, input, EventKeyboard, Node, KeyCode, Collider, Label, director } from 'cc';
+import { _decorator, Component, Input, input, EventKeyboard, Node, KeyCode, Collider, Label, director, SystemEventType, Vec3, Camera } from 'cc';
 const { ccclass, property } = _decorator;
 
 @ccclass('Player')
@@ -41,6 +41,19 @@ export class Player extends Component {
     // 监听碰撞触发类型：onTriggerExit 结束触发
     playerCollider: Collider | null = null;  // 玩家碰撞组件
 
+    @property({ tooltip: '赛道左边界（世界坐标 X）' })
+    leftBound: number = -3;
+
+    @property({ tooltip: '赛道右边界（世界坐标 X）' })
+    rightBound: number = 3;
+
+    @property({ tooltip: '是否启用拖拽控制' })
+    enableDrag: boolean = true;
+
+    private camera: Camera | null = null;
+    private isTouching = false;
+    private currentX = 0;
+
     // 监听类型如下：
     // 鼠标事件 Input.EventType.MOUSE_DOWN
     // Input. EventType MOUSE_MOVE
@@ -62,13 +75,41 @@ export class Player extends Component {
         this.playerCollider = this.playerNode!.getComponent(Collider)!;
         this.playerCollider = this.playerNode!.getComponent(Collider)!;
         this.playerCollider.on('onTriggerEnter', this.onTriggerEnter, this);
+
+        // 关键：延迟一帧
+        // 获取主相机（必须存在！）
+        const cameras = director.getScene().getComponentsInChildren(Camera);
+        this.camera = cameras.find(cam => cam.enabled) || null;
+        if (!this.camera) {
+            console.error('❌ No active camera found! Car control disabled.');
+            return;
+        }
+    
+
+        // 监听触摸事件（适用于 UI 节点）
+        // 监听 Canvas 的触摸事件（推荐挂到 Canvas 上）
+        this.node.scene.on(Input.EventType.TOUCH_START, this.onTouchStart, this);
+        this.node.scene.on(Input.EventType.TOUCH_MOVE, this.onTouchMove, this);
+        this.node.scene.on(Input.EventType.TOUCH_END, this.onTouchEnd, this);
+        this.node.scene.on(Input.EventType.TOUCH_CANCEL, this.onTouchEnd, this);
+
     }
 
     protected onDestroy(): void {
         input.off(Input.EventType.KEY_DOWN, this.onKeyDown, this);
         input.off(Input.EventType.KEY_UP, this.onKeyUp, this);
         this.playerCollider!.off('onTriggerEnter', this.onTriggerEnter, this);
+
+        
+        this.node.scene.off(Input.EventType.TOUCH_START, this.onTouchStart, this);
+        this.node.scene.off(Input.EventType.TOUCH_MOVE, this.onTouchMove, this);
+        this.node.scene.off(Input.EventType.TOUCH_END, this.onTouchEnd, this);
+        this.node.scene.off(Input.EventType.TOUCH_CANCEL, this.onTouchEnd, this);
+        // 初始化当前位置
+        this.currentX = this.node.position.x;
     }
+
+    
 
 
     protected onTriggerEnter(colliderInfo) { // 碰撞的信息
@@ -144,20 +185,21 @@ export class Player extends Component {
 
         // 根据按键状态进行左右移动
         let x = position.x;
-        if (this.lrMove.a && !this.lrMove.b) {
-            // 按下A键，向左移动
-            x -= this.moveLrSpeed * deltaTime;
-        }
-        if (this.lrMove.b && !this.lrMove.a) {
-            // 按下D键，向右移动
-            x += this.moveLrSpeed * deltaTime;
-        }
+        // if (this.lrMove.a && !this.lrMove.b) {
+        //     // 按下A键，向左移动
+        //     x -= this.moveLrSpeed * deltaTime;
+        // }
+        // if (this.lrMove.b && !this.lrMove.a) {
+        //     // 按下D键，向右移动
+        //     x += this.moveLrSpeed * deltaTime;
+        // }
 
-        x = Math.max(Math.min(x, 3), -3); // 限制x轴移动范围在-7到7之间
+        // x = Math.max(Math.min(x, 3), -3); // 限制x轴移动范围在-7到7之间
 
         // console.log("当前节点位置：", position);
         // 设置固定的速度移动，进行帧时间补偿 可以解决帧率波动的问题
         // 由于设备帧率忽高忽低，会造成速度不对等， 为了防止这种情况，还需要进行帧时间补偿
+        
         const z = position.z - deltaPos
         this.node.setPosition(x, position.y, z);
     }
@@ -189,6 +231,42 @@ export class Player extends Component {
 
     }
 
+    protected onTouchStart(event: any) {
+        console.log("触摸开始");
+        if (!this.enableDrag || !this.camera) return;
+        this.isTouching = true;
+        this.updateCarPosition(event.getLocationX());
+    }
 
+    onTouchMove(event: any) {
+        if (!this.isTouching || !this.enableDrag || !this.camera) return;
+        this.updateCarPosition(event.getLocationX());
+    }
+
+    onTouchEnd() {
+        this.isTouching = false;
+    }
+
+    private updateCarPosition(screenX: number) {
+        if (!this.camera) return;
+        // 获取屏幕宽度（兼容不同设备）
+        const screenWidth = this.camera!.width; // 注意：这是相机的 width（单位：像素）
+
+        // 将屏幕 X 映射到 [leftBound, rightBound]
+        const ratio = screenX / screenWidth;
+        let targetX = this.leftBound + ratio * (this.rightBound - this.leftBound);
+
+        // 平滑过渡（可选，注释掉则瞬移）
+        this.currentX = this.currentX * 0.7 + targetX * 0.3;
+
+        // 应用位置（保持 Y 和 Z 不变）
+        const pos = this.node.position;
+        this.node.setPosition(this.currentX, pos.y, pos.z);
+    }
+
+    protected findCamera() {
+        const cameras = this.node.scene.getComponentsInChildren(Camera);
+        this.camera = cameras.find(c => c.enabled) || null;
+    }
 }
 
