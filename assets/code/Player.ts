@@ -21,6 +21,7 @@ export class Player extends Component {
     moveLrSpeed:number = 30;
 
     lrMove = {a:false, b:false}; // 左右移动的变量
+    moveForward: boolean = true; // 前进开关
 
 
     // 监听碰撞触发：组件.on（'触发类型',肒行函数,this)
@@ -29,7 +30,7 @@ export class Player extends Component {
     // 监听碰撞触发类型：onTriggerExit 结束触发
     playerCollider: Collider | null = null;  // 玩家碰撞组件
 
-        // 监听类型如下：
+    // 监听类型如下：
     // 鼠标事件 Input.EventType.MOUSE_DOWN
     // Input. EventType MOUSE_MOVE
     // Input. EventType.MOUSE_UP
@@ -43,10 +44,12 @@ export class Player extends Component {
     // Input.EventType.KEY_UP（键盘释放）
     // 监听写法如下：input.on(Input.EventType.MOUSE_DOWN, this.onMouseDown, this);
     // 监听开启和关闭成对写上，防止内存泄漏
+    // 先获取目标节点的碰撞组件
     protected onLoad(): void {
-        this.playerCollider = this.playerNode!.getComponent(Collider)!;
         input.on(Input.EventType.KEY_DOWN, this.onKeyDown, this);
         input.on(Input.EventType.KEY_UP, this.onKeyUp, this);
+        this.playerCollider = this.playerNode!.getComponent(Collider)!;
+        this.playerCollider = this.playerNode!.getComponent(Collider)!;
         this.playerCollider.on('onTriggerEnter', this.onTriggerEnter, this);
     }
 
@@ -56,10 +59,17 @@ export class Player extends Component {
         this.playerCollider!.off('onTriggerEnter', this.onTriggerEnter, this);
     }
 
-    onTriggerEnter() {
-        console.log("碰撞触发");
 
+    protected onTriggerEnter(colliderInfo) { // 碰撞的信息
+        console.log("碰撞到的物体是：", colliderInfo);
+        this.moveForward = false; // 碰撞后停止前进
+        if(colliderInfo.otherCollider.node.name === "End") {
+            console.log("成功");
+        } else {
+            console.log("失败");
+        }
     }
+
 
     onKeyDown(event: EventKeyboard) {
         console.log("按下的键位：", event.keyCode);
@@ -104,14 +114,22 @@ export class Player extends Component {
      * @param deltaTime 
      */
     update(deltaTime: number) {
+        if (!this.moveForward) {
+            return;
+        }
         const position = this.node.getPosition();
-        const cameraPosition = this.cameraNode!.getPosition();
+        // 超出跑道范围，停止前进
+        // if (position.z < -200) {
+        //     console.log("成功");
+        //     this.moveForward = false;
+        //     return;
+        // }
 
+        const cameraPosition = this.cameraNode!.getPosition();
         const deltaPos = this.moveUpSpeed * deltaTime;
         // 让相机跟随小车移动
         this.cameraNode!.setPosition(cameraPosition.x, cameraPosition.y, cameraPosition.z - deltaPos);
-    
-    
+
         // 根据按键状态进行左右移动
         let x = position.x;
         if (this.lrMove.a && !this.lrMove.b) {
