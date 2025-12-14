@@ -1,4 +1,4 @@
-import { _decorator, Component, Input, input, EventKeyboard, Node, KeyCode, Collider, Label, director, SystemEventType, Vec3, Camera } from 'cc';
+import { _decorator, Component, Input, input, EventKeyboard, Node, KeyCode, Collider, Label, director, SystemEventType, Vec3, Camera, EventTouch, geometry, physics, PhysicsSystem } from 'cc';
 const { ccclass, property } = _decorator;
 
 @ccclass('Player')
@@ -22,6 +22,9 @@ export class Player extends Component {
     // 绑定相机节点
     @property(Node)
     cameraNode: Node | null = null;
+
+    @property(Camera)
+    readonly camera!: Camera;
 
     // 设置小车的速度是30
     @property // 装饰器 用于在编辑器中显示该属性
@@ -50,7 +53,8 @@ export class Player extends Component {
     @property({ tooltip: '是否启用拖拽控制' })
     enableDrag: boolean = true;
 
-    private camera: Camera | null = null;
+
+    private _ray: geometry.Ray = new geometry.Ray();
     private isTouching = false;
     private currentX = 0;
 
@@ -76,22 +80,11 @@ export class Player extends Component {
         this.playerCollider = this.playerNode!.getComponent(Collider)!;
         this.playerCollider.on('onTriggerEnter', this.onTriggerEnter, this);
 
-        // 关键：延迟一帧
-        // 获取主相机（必须存在！）
-        const cameras = director.getScene().getComponentsInChildren(Camera);
-        this.camera = cameras.find(cam => cam.enabled) || null;
-        if (!this.camera) {
-            console.error('❌ No active camera found! Car control disabled.');
-            return;
-        }
-    
-
-        // 监听触摸事件（适用于 UI 节点）
-        // 监听 Canvas 的触摸事件（推荐挂到 Canvas 上）
-        this.node.scene.on(Input.EventType.TOUCH_START, this.onTouchStart, this);
-        this.node.scene.on(Input.EventType.TOUCH_MOVE, this.onTouchMove, this);
-        this.node.scene.on(Input.EventType.TOUCH_END, this.onTouchEnd, this);
-        this.node.scene.on(Input.EventType.TOUCH_CANCEL, this.onTouchEnd, this);
+        input.on(Input.EventType.TOUCH_START, this.onTouchStart, this);
+        input.on(Input.EventType.TOUCH_START, this.onTouchStart, this);
+        input.on(Input.EventType.TOUCH_MOVE, this.onTouchMove, this);
+        input.on(Input.EventType.TOUCH_END, this.onTouchEnd, this);
+        input.on(Input.EventType.TOUCH_CANCEL, this.onTouchEnd, this);
 
     }
 
@@ -101,12 +94,11 @@ export class Player extends Component {
         this.playerCollider!.off('onTriggerEnter', this.onTriggerEnter, this);
 
         
-        this.node.scene.off(Input.EventType.TOUCH_START, this.onTouchStart, this);
-        this.node.scene.off(Input.EventType.TOUCH_MOVE, this.onTouchMove, this);
-        this.node.scene.off(Input.EventType.TOUCH_END, this.onTouchEnd, this);
-        this.node.scene.off(Input.EventType.TOUCH_CANCEL, this.onTouchEnd, this);
-        // 初始化当前位置
-        this.currentX = this.node.position.x;
+        input.off(Input.EventType.TOUCH_START, this.onTouchStart, this);
+        input.off(Input.EventType.TOUCH_START, this.onTouchStart, this);
+        input.off(Input.EventType.TOUCH_MOVE, this.onTouchMove, this);
+        input.off(Input.EventType.TOUCH_END, this.onTouchEnd, this);
+        input.off(Input.EventType.TOUCH_CANCEL, this.onTouchEnd, this);
     }
 
     
@@ -185,21 +177,22 @@ export class Player extends Component {
 
         // 根据按键状态进行左右移动
         let x = position.x;
-        // if (this.lrMove.a && !this.lrMove.b) {
-        //     // 按下A键，向左移动
-        //     x -= this.moveLrSpeed * deltaTime;
-        // }
-        // if (this.lrMove.b && !this.lrMove.a) {
-        //     // 按下D键，向右移动
-        //     x += this.moveLrSpeed * deltaTime;
-        // }
+        if(!this.enableDrag) {
+            if (this.lrMove.a && !this.lrMove.b) {
+                // 按下A键，向左移动
+                x -= this.moveLrSpeed * deltaTime;
+            }
+            if (this.lrMove.b && !this.lrMove.a) {
+                // 按下D键，向右移动
+                x += this.moveLrSpeed * deltaTime;
+            }
+            x = Math.max(Math.min(x, 3), -3); // 限制x轴移动范围在-7到7之间
+        }
 
-        // x = Math.max(Math.min(x, 3), -3); // 限制x轴移动范围在-7到7之间
 
         // console.log("当前节点位置：", position);
         // 设置固定的速度移动，进行帧时间补偿 可以解决帧率波动的问题
         // 由于设备帧率忽高忽低，会造成速度不对等， 为了防止这种情况，还需要进行帧时间补偿
-        
         const z = position.z - deltaPos
         this.node.setPosition(x, position.y, z);
     }
@@ -231,14 +224,15 @@ export class Player extends Component {
 
     }
 
-    protected onTouchStart(event: any) {
-        console.log("触摸开始");
-        if (!this.enableDrag || !this.camera) return;
+    onTouchStart(event: EventTouch) {
+        console.log('raycast hit the target node !');
         this.isTouching = true;
+        this.currentX = this.node.position.x;
         this.updateCarPosition(event.getLocationX());
     }
 
     onTouchMove(event: any) {
+        console.log("触摸移动事件：", event.getLocationX(), event.getLocationY());
         if (!this.isTouching || !this.enableDrag || !this.camera) return;
         this.updateCarPosition(event.getLocationX());
     }
@@ -250,23 +244,21 @@ export class Player extends Component {
     private updateCarPosition(screenX: number) {
         if (!this.camera) return;
         // 获取屏幕宽度（兼容不同设备）
-        const screenWidth = this.camera!.width; // 注意：这是相机的 width（单位：像素）
+        const screenWidth = this.camera!.camera.width; // 注意：这是相机的 width（单位：像素）
 
         // 将屏幕 X 映射到 [leftBound, rightBound]
         const ratio = screenX / screenWidth;
         let targetX = this.leftBound + ratio * (this.rightBound - this.leftBound);
+        console.log(`screenX: ${screenX}, screenWidth: ${screenWidth}, ratio: ${ratio}, targetX: ${targetX}`);
 
         // 平滑过渡（可选，注释掉则瞬移）
         this.currentX = this.currentX * 0.7 + targetX * 0.3;
+        this.currentX = Math.max(this.leftBound, Math.min(this.rightBound, this.currentX));
 
         // 应用位置（保持 Y 和 Z 不变）
         const pos = this.node.position;
         this.node.setPosition(this.currentX, pos.y, pos.z);
     }
 
-    protected findCamera() {
-        const cameras = this.node.scene.getComponentsInChildren(Camera);
-        this.camera = cameras.find(c => c.enabled) || null;
-    }
 }
 
