@@ -225,14 +225,14 @@ export class Player extends Component {
     }
 
     onTouchStart(event: EventTouch) {
-        console.log('raycast hit the target node !');
+        // console.log('raycast hit the target node !');
         this.isTouching = true;
         this.currentX = this.node.position.x;
         this.updateCarPosition(event.getLocationX());
     }
 
     onTouchMove(event: any) {
-        console.log("触摸移动事件：", event.getLocationX(), event.getLocationY());
+        // console.log("触摸移动事件：", event.getLocationX(), event.getLocationY());
         if (!this.isTouching || !this.enableDrag || !this.camera) return;
         this.updateCarPosition(event.getLocationX());
     }
@@ -249,7 +249,7 @@ export class Player extends Component {
         // 将屏幕 X 映射到 [leftBound, rightBound]
         const ratio = screenX / screenWidth;
         let targetX = this.leftBound + ratio * (this.rightBound - this.leftBound);
-        console.log(`screenX: ${screenX}, screenWidth: ${screenWidth}, ratio: ${ratio}, targetX: ${targetX}`);
+        // console.log(`screenX: ${screenX}, screenWidth: ${screenWidth}, ratio: ${ratio}, targetX: ${targetX}`);
 
         // 平滑过渡（可选，注释掉则瞬移）
         this.currentX = this.currentX * 0.7 + targetX * 0.3;
